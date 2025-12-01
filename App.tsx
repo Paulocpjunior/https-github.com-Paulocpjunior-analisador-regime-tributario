@@ -280,6 +280,9 @@ const App: React.FC = () => {
 
   const handleExportPDF = () => {
     setExportingPDF(true);
+    // Rolagem para o topo para evitar que o html2canvas corte o conteúdo devido ao scroll
+    window.scrollTo(0, 0);
+    
     setTimeout(() => {
         const element = document.getElementById('resultado-imprimivel');
         if (element) {
@@ -287,17 +290,21 @@ const App: React.FC = () => {
                 margin:       0.3,
                 filename:     `analise-tributaria-${nomeEmpresa || 'empresa'}-${anoReferencia}.pdf`,
                 image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true },
+                // Adicionado scrollY: 0 para corrigir problema de PDF em branco ao rolar a página
+                html2canvas:  { scale: 2, useCORS: true, scrollY: 0 }, 
                 jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
                 pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
             };
             html2pdf().from(element).set(opt).save().then(() => {
                 setExportingPDF(false);
+            }).catch((err: any) => {
+                console.error("Erro ao exportar PDF:", err);
+                setExportingPDF(false);
             });
         } else {
            setExportingPDF(false); 
         }
-    }, 100);
+    }, 500); // Aumentado o tempo de espera para garantir que o render esteja estável
   };
 
   const handleExportCSV = () => {
