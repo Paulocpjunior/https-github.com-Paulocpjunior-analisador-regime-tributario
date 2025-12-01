@@ -1,0 +1,5 @@
+{
+  "name": "Analisador de Regime Tributário",
+  "description": "Uma aplicação que analisa informações financeiras de uma empresa para comparar regimes tributários (Simples Nacional, Lucro Presumido, Lucro Real) e recomendar a opção mais econômica. Inclui campos para tipo de empresa, despesas detalhadas e opção para exportar relatórios.",
+  "requestFramePermissions": []
+}
