@@ -16,7 +16,7 @@ Siga estas regras CRÍTICAS em TODAS as análises:
     - **Simples Nacional:** Segregue esta receita. Ao calcular o imposto, APLIQUE a alíquota do Anexo correspondente, mas EXCLUA o percentual referente a PIS/COFINS sobre a parcela da receita monofásica. Deixe isso explícito no campo 'detalhes'.
     - **Lucro Presumido e Lucro Real:** Para a receita vinda de produtos monofásicos, a alíquota de PIS e COFINS é ZERO. Calcule o IRPJ e CSLL normalmente sobre a presunção de lucro (Presumido) ou lucro real (Real), mas zere PIS e COFINS sobre essa parte do faturamento. Deixe claro no campo 'detalhes' que a isenção foi aplicada.
     - **MEI:** A tributação monofásica não se aplica, pois o MEI paga um valor fixo mensal.
-7.  **Cálculo para Lucro Real:** Para o Lucro Real, o lucro (base de cálculo para IRPJ e CSLL) DEVE ser calculado estritamente como: (Faturamento Total) - (Folha de Pagamento) - (Total de Outras Despesas Dedutíveis, conforme informado no prompt). Ignore quaisquer outras despesas não marcadas como dedutíveis para este regime específico.
+7.  **Cálculo para Lucro Real e Prejuízos Fiscais:** Para o Lucro Real, o lucro base é (Faturamento - Folha - Despesas Dedutíveis). Se houver "Prejuízo Fiscal Acumulado" informado, você DEVE deduzi-lo da base de cálculo do IRPJ e CSLL, mas LIMITADO a 30% do lucro real do período analisado. Mencione explicitamente nos detalhes se houve abatimento de prejuízo fiscal anterior.
 8.  **Limites de Faturamento:** Use os seguintes limites anuais: Simples Nacional (R$ 4.800.000), Lucro Presumido (R$ 78.000.000), MEI (R$ 81.000), e Lucro Real (obrigatório acima de R$ 78.000.000).
 `;
 
@@ -26,6 +26,7 @@ export async function analisarRegimeTributario(
   faturamentoMonofasico: number,
   despesas: DynamicExpense[],
   folhaPagamento: number,
+  prejuizoFiscal: number,
   tipoEmpresa: string,
   nomeEmpresa: string,
   periodoAnalise: string,
@@ -52,6 +53,10 @@ export async function analisarRegimeTributario(
     ? `- Deste total, Faturamento com Produtos Monofásicos (revenda com isenção de PIS/COFINS): R$ ${faturamentoMonofasico.toLocaleString('pt-BR')}`
     : '';
 
+  const prejuizoFiscalFormatado = prejuizoFiscal > 0
+    ? `- Prejuízo Fiscal Acumulado de períodos anteriores: R$ ${prejuizoFiscal.toLocaleString('pt-BR')} (Usar regra da trava de 30% para o Lucro Real)`
+    : '- Sem prejuízo fiscal acumulado.';
+
   const prompt = `
     Analise os seguintes dados para a empresa e gere a resposta em JSON, seguindo o schema fornecido.
 
@@ -70,12 +75,13 @@ export async function analisarRegimeTributario(
     - Detalhe de Outras Despesas Dedutíveis (para Lucro Real):
     ${despesasDutiveisFormatadas}
     - Total de Outras Despesas Dedutíveis: R$ ${totalDespesasDutiveis.toLocaleString('pt-BR')}
+    ${prejuizoFiscalFormatado}
 
     **Premissas para Cálculo:**
     - **Simples Nacional:** Calcule com base no anexo determinado pelo CNAE principal. Considere o impacto de atividades secundárias se elas forem impeditivas.
     - **MEI:** Considere um DAS mensal médio de R$ 75. Verifique a elegibilidade de TODAS as atividades.
     - **Lucro Presumido:** Use presunções de lucro padrão para '${tipoEmpresa}' (e.g., 8% para comércio, 32% para serviços).
-    - **Lucro Real:** Calcule o lucro como (Faturamento - Folha de Pagamento - Total de Outras Despesas Dedutíveis). Considere a dedutibilidade das despesas conforme detalhado acima.
+    - **Lucro Real:** Calcule o lucro antes dos impostos como (Faturamento - Folha de Pagamento - Total de Outras Despesas Dedutíveis). Se houver Prejuízo Fiscal informado, abata da base de cálculo respeitando o limite legal de 30% do lucro do período.
   `;
 
   try {

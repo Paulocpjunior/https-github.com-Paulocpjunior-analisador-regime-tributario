@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const [faturamentoMonofasico, setFaturamentoMonofasico] = useState('');
   const [folhaPagamento, setFolhaPagamento] = useState('');
   const [proLabore, setProLabore] = useState('');
+  const [prejuizoFiscal, setPrejuizoFiscal] = useState(''); // Novo estado para prejuízo fiscal
   const [tipoEmpresa, setTipoEmpresa] = useState('');
   
   const [dynamicExpenses, setDynamicExpenses] = useState<{id: number, name: string, value: string, icon: string, isDeductible: boolean}[]>([
@@ -63,6 +64,14 @@ const App: React.FC = () => {
     }
     return 'light';
   });
+
+  const cnaeTooltipText = 
+    "A atividade (CNAE) define o anexo do Simples Nacional:\n" +
+    "• Anexo I: Comércio (lojas, revendas)\n" +
+    "• Anexo II: Indústria (fábricas)\n" +
+    "• Anexo III: Serviços de instalação, reparos, contabilidade, viagens\n" +
+    "• Anexo IV: Serviços de limpeza, vigilância, obras, advocacia\n" +
+    "• Anexo V: Serviços intelectuais/tecnologia (sujeito ao Fator R)";
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -208,6 +217,7 @@ const App: React.FC = () => {
             faturamentoMonofasicoNum,
             allExpenses.map(d => ({...d, value: d.value || '0', name: d.name || 'Despesa'})),
             parseFloat(folhaPagamento) || 0,
+            parseFloat(prejuizoFiscal) || 0, // Passa o prejuízo fiscal para o serviço
             tipoEmpresa,
             nomeEmpresa || "Empresa Exemplo",
             periodoAnalise,
@@ -229,7 +239,7 @@ const App: React.FC = () => {
     const trimmedName = saveName.trim();
     if (resultado && trimmedName) {
       const inputs: AnalysisInputs = {
-        nomeEmpresa, email, cnpj, periodoAnalise, anoReferencia, faturamento, faturamentoMonofasico, folhaPagamento, proLabore, tipoEmpresa, 
+        nomeEmpresa, email, cnpj, periodoAnalise, anoReferencia, faturamento, faturamentoMonofasico, folhaPagamento, proLabore, prejuizoFiscal, tipoEmpresa, 
         dynamicExpenses: dynamicExpenses.map(({id, ...rest}) => rest),
         cnaes: cnaes.map(c => c.value)
       };
@@ -254,6 +264,7 @@ const App: React.FC = () => {
         setFaturamentoMonofasico(inputs.faturamentoMonofasico || '');
         setFolhaPagamento(inputs.folhaPagamento || '');
         setProLabore(inputs.proLabore || '');
+        setPrejuizoFiscal(inputs.prejuizoFiscal || '');
         setTipoEmpresa(inputs.tipoEmpresa || '');
         
         const loadedExpenses = inputs.dynamicExpenses && inputs.dynamicExpenses.length > 0
@@ -287,10 +298,9 @@ const App: React.FC = () => {
         const element = document.getElementById('resultado-imprimivel');
         if (element) {
             const opt = {
-                margin:       0.3,
+                margin:       [0.5, 0.3, 0.5, 0.3], // Margens: Topo, Dir, Base, Esq
                 filename:     `analise-tributaria-${nomeEmpresa || 'empresa'}-${anoReferencia}.pdf`,
-                image:        { type: 'jpeg', quality: 0.98 },
-                // Adicionado scrollY: 0 para corrigir problema de PDF em branco ao rolar a página
+                image:        { type: 'jpeg', quality: 1.0 }, // Máxima qualidade
                 html2canvas:  { scale: 2, useCORS: true, scrollY: 0 }, 
                 jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
                 pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
@@ -443,6 +453,7 @@ const App: React.FC = () => {
                                         onBlur={() => handleCnaeBlur(cnae.id)}
                                         error={cnae.error} 
                                         placeholder="0000-0/00"
+                                        tooltip={cnaeTooltipText}
                                     />
                                      {cnae.loading && <i className="fa-solid fa-spinner fa-spin absolute right-3 top-1/2 -translate-y-1/2 text-indigo-500"></i>}
                                 </div>
@@ -508,6 +519,17 @@ const App: React.FC = () => {
                         isCurrency 
                         tooltip="O 'salário' do dono/sócio. Este valor conta para o cálculo do Fator R no Simples Nacional e é considerado uma despesa dedutível no Lucro Real, ajudando a pagar menos imposto." 
                     />
+                    <div className="md:col-span-2">
+                         <Input 
+                            label="Prejuízo Fiscal Acumulado (Opcional)" 
+                            iconClass="fa-solid fa-arrow-trend-down" 
+                            id="prejuizoFiscal" 
+                            value={prejuizoFiscal} 
+                            onChange={(e) => setPrejuizoFiscal(e.target.value)} 
+                            isCurrency 
+                            tooltip="Se a empresa possui prejuízos de anos anteriores, informe aqui. No Lucro Real, é possível abater esse prejuízo da base de cálculo do imposto, limitado a 30% do lucro do período." 
+                        />
+                    </div>
                 </div>
             </section>
 
@@ -580,6 +602,19 @@ const App: React.FC = () => {
           <section id="resultado" className="mt-16">
             <div id="resultado-imprimivel">
                 
+                {/* Header Exclusivo para PDF (Oculto em tela) */}
+                <div id="pdf-header" className="hidden mb-4 border-b-2 border-indigo-600 pb-2">
+                   <div className="flex justify-between items-end">
+                       <div>
+                           <h2 className="text-sm font-bold text-gray-800 uppercase tracking-widest">Desenvolvido BY - SP ASSESSORIA CONTÁBIL</h2>
+                           <p className="text-xs text-gray-500">Direitos Reservados • Uso Exclusivo</p>
+                       </div>
+                       <div className="text-right text-xs text-gray-500">
+                           {new Date().toLocaleDateString('pt-BR')} • {new Date().toLocaleTimeString('pt-BR')}
+                       </div>
+                   </div>
+                </div>
+
                 {/* Cabeçalho do Relatório com Resumo dos Dados (Exibido no PDF) */}
                 <div className="mb-6 bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-xl shadow-lg border-b-4 border-indigo-600">
                      <div className="flex justify-between items-start mb-6">
@@ -615,6 +650,9 @@ const App: React.FC = () => {
                             )}
                             <p className="mb-1"><span className="font-semibold text-gray-600 dark:text-gray-400">Folha de Pagamento:</span> {parseFloat(folhaPagamento || '0').toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</p>
                             <p className="mb-1"><span className="font-semibold text-gray-600 dark:text-gray-400">Pró-Labore:</span> {parseFloat(proLabore || '0').toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</p>
+                            {prejuizoFiscal && parseFloat(prejuizoFiscal) > 0 && (
+                                 <p className="mb-1"><span className="font-semibold text-gray-600 dark:text-gray-400 text-red-500">Prejuízo Fiscal Acum.:</span> {parseFloat(prejuizoFiscal).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</p>
+                            )}
                             
                             <h3 className="font-bold text-gray-700 dark:text-gray-300 border-b dark:border-gray-700 pb-1 mb-2 mt-4">Despesas Operacionais</h3>
                             <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 pl-1 mt-1 max-h-40 overflow-hidden">

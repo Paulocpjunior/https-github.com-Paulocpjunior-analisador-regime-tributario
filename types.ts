@@ -29,11 +29,12 @@ export interface AnalysisInputs {
     email?: string;
     cnpj: string;
     periodoAnalise: string;
-    anoReferencia?: string; // Novo campo para o ano de planejamento (ex: 2026)
+    anoReferencia?: string; 
     faturamento: string;
     faturamentoMonofasico?: string;
     folhaPagamento: string;
     proLabore?: string;
+    prejuizoFiscal?: string; // Novo campo para Lucro Real
     tipoEmpresa: string;
     dynamicExpenses?: DynamicExpense[];
     
