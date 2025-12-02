@@ -356,6 +356,29 @@ const App: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  const handleExportWhatsApp = () => {
+    if (!resultado) return;
+
+    const text = [
+        `*Planejamento Tributário ${anoReferencia}*`,
+        `🏢 *Empresa:* ${nomeEmpresa || 'Não informada'}`,
+        ``,
+        `🏆 *Recomendação:* ${resultado.recomendacao.melhorRegime}`,
+        `💰 *Economia Estimada:* ${resultado.recomendacao.economiaEstimada.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
+        `📝 *Justificativa:* ${resultado.recomendacao.justificativa}`,
+        ``,
+        `*Comparativo de Impostos Anuais:*`,
+        ...resultado.analise.map(r => 
+            `- ${r.regime}: ${r.impostoEstimado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+        ),
+        ``,
+        `_Gerado por SP Assessoria Contábil_`
+    ].join('\n');
+
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+  };
+
   const handleContactSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Simulação de envio
@@ -727,6 +750,9 @@ const App: React.FC = () => {
               </button>
               <button onClick={handleExportCSV} className="w-full sm:w-auto flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm">
                 <i className="fa-solid fa-file-excel mr-2"></i> Exportar CSV (Excel)
+              </button>
+              <button onClick={handleExportWhatsApp} className="w-full sm:w-auto flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-green-500 hover:bg-green-600 transition-colors shadow-sm">
+                <i className="fa-brands fa-whatsapp mr-2 text-xl"></i> Compartilhar
               </button>
             </div>
           </section>
