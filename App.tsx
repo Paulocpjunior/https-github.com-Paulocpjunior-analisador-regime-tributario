@@ -8,18 +8,18 @@ import Disclaimer from './components/Disclaimer';
 import Logo from './components/Logo';
 import SavedAnalyses from './components/SavedAnalyses';
 import IconPicker from './components/IconPicker';
-import CalculationLogicModal from './components/CalculationLogicModal'; // Importação do Modal
+import CalculationLogicModal from './components/CalculationLogicModal'; 
 import { analisarRegimeTributario, sugerirCnae } from './services/geminiService';
 import { getSavedAnalyses, saveAnalysis, deleteAnalysis } from './services/storageService';
 import { fetchCnaeDescription } from './services/cnaeService';
+import { fetchCompanyData } from './services/cnpjService'; // Novo serviço
 import type { AnaliseTributaria, AnalysisInputs, SavedAnalysis } from './types';
 import { validateCnpj, validateCnae } from './utils/validators';
 
-// Declara a variável global html2pdf para que o TypeScript a reconheça
 declare const html2pdf: any;
 
 const SIMPLES_LIMIT = 4800000;
-const SIMPLES_WARNING_THRESHOLD = SIMPLES_LIMIT * 0.8; // 80% do limite (3.84M)
+const SIMPLES_WARNING_THRESHOLD = SIMPLES_LIMIT * 0.8; 
 
 const App: React.FC = () => {
   const [nomeEmpresa, setNomeEmpresa] = useState('');
@@ -31,7 +31,7 @@ const App: React.FC = () => {
   const [faturamentoMonofasico, setFaturamentoMonofasico] = useState('');
   const [folhaPagamento, setFolhaPagamento] = useState('');
   const [proLabore, setProLabore] = useState('');
-  const [prejuizoFiscal, setPrejuizoFiscal] = useState(''); // Novo estado para prejuízo fiscal
+  const [prejuizoFiscal, setPrejuizoFiscal] = useState(''); 
   const [tipoEmpresa, setTipoEmpresa] = useState('');
   
   const [dynamicExpenses, setDynamicExpenses] = useState<{id: number, name: string, value: string, icon: string, isDeductible: boolean}[]>([
@@ -45,6 +45,7 @@ const App: React.FC = () => {
 
   const [resultado, setResultado] = useState<AnaliseTributaria | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingCnpj, setLoadingCnpj] = useState(false); // Estado de loading para CNPJ
   const [exportingPDF, setExportingPDF] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,7 +53,7 @@ const App: React.FC = () => {
   const [saveName, setSaveName] = useState('');
   
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
-  const [isCalcModalOpen, setIsCalcModalOpen] = useState(false); // Estado para o modal de lógica
+  const [isCalcModalOpen, setIsCalcModalOpen] = useState(false);
 
   const [cnpjError, setCnpjError] = useState<string | null>(null);
   
@@ -100,19 +101,16 @@ const App: React.FC = () => {
   
   const formatCnpj = (value: string) => {
       return value
-        .replace(/\D/g, '') // Remove non-digits
+        .replace(/\D/g, '') 
         .replace(/(\d{2})(\d)/, '$1.$2')
         .replace(/(\d{3})(\d)/, '$1.$2')
         .replace(/(\d{3})(\d)/, '$1/$2')
         .replace(/(\d{4})(\d)/, '$1-$2')
-        .slice(0, 18); // Max length for formatted CNPJ
+        .slice(0, 18); 
   };
   
-   // Removida a formatação estrita para permitir digitação de texto para busca por IA
    const formatCnaeInput = (value: string) => {
-        // Se conter apenas números e símbolos de formatação, aplica a máscara
         const numbersOnly = value.replace(/[^\d]/g, '');
-        // Se o usuário estiver digitando texto (descrição), não aplica máscara
         const hasLetters = /[a-zA-Z]/.test(value);
         
         if (!hasLetters && numbersOnly.length > 0) {
@@ -124,10 +122,40 @@ const App: React.FC = () => {
         return value;
     };
 
-  const handleCnpjBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+  const handleCnpjBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    if (value) { // Only validate if there is a value
-      setCnpjError(validateCnpj(value));
+    const validationError = validateCnpj(value);
+    
+    if (value && !validationError) { 
+      setCnpjError(null);
+      setLoadingCnpj(true);
+      try {
+        const companyData = await fetchCompanyData(value);
+        setNomeEmpresa(companyData.nome);
+        
+        if (companyData.tipoProvavel) {
+            setTipoEmpresa(companyData.tipoProvavel);
+        }
+
+        // Mapeia os CNAEs retornados para o formato do estado
+        if (companyData.cnaes.length > 0) {
+            const mappedCnaes = companyData.cnaes.map((c, index) => ({
+                id: Date.now() + index,
+                value: c.code,
+                description: c.description,
+                error: null,
+                loading: false
+            }));
+            setCnaes(mappedCnaes);
+        }
+      } catch (err) {
+        // Se falhar a API, apenas mantém o que o usuário digitou e mostra erro sutil no console
+        console.warn("Não foi possível preencher automaticamente os dados da empresa.", err);
+      } finally {
+        setLoadingCnpj(false);
+      }
+    } else if (value) {
+      setCnpjError(validationError);
     } else {
       setCnpjError(null);
     }
@@ -145,7 +173,6 @@ const App: React.FC = () => {
         return;
     }
 
-    // Identifica se é um código (formato numérico) ou uma descrição (texto)
     const isCode = /^[\d\-\/]+$/.test(inputValue);
 
     let updatedCnaes = cnaes.map(c => c.id === id ? { ...c, error: null, description: null, loading: true } : c);
@@ -153,7 +180,6 @@ const App: React.FC = () => {
     
     try {
         if (isCode) {
-            // Validação padrão via IBGE
             const formatError = validateCnae(inputValue);
             if (formatError) {
                 setCnaes(prevCnaes => prevCnaes.map(c => c.id === id ? { ...c, error: formatError, loading: false } : c));
@@ -164,7 +190,6 @@ const App: React.FC = () => {
               c.id === id ? { ...c, description, loading: false, error: null } : c
             ));
         } else {
-            // Busca Inteligente via IA (Input é texto)
             const result = await sugerirCnae(inputValue);
             setCnaes(prevCnaes => prevCnaes.map(c => 
               c.id === id ? { 
@@ -215,7 +240,6 @@ const App: React.FC = () => {
     ));
   };
   
-  // Função para determinar o status do faturamento em relação ao limite do Simples
   const getFaturamentoStatus = () => {
     const valor = parseFloat(faturamento);
     if (isNaN(valor)) return null;
@@ -236,12 +260,10 @@ const App: React.FC = () => {
     setResultado(null);
     setLoading(true);
 
-    // Validação estrita de Faturamento
     const faturamentoNum = parseFloat(faturamento);
     if (!faturamento || isNaN(faturamentoNum) || faturamentoNum <= 0) {
         setError("O Faturamento Total deve ser maior que R$ 0,00.");
         setLoading(false);
-        // Rola para o campo de faturamento
         document.getElementById('faturamento')?.focus();
         return;
     }
@@ -272,7 +294,7 @@ const App: React.FC = () => {
             faturamentoMonofasicoNum,
             allExpenses.map(d => ({...d, value: d.value || '0', name: d.name || 'Despesa'})),
             parseFloat(folhaPagamento) || 0,
-            parseFloat(prejuizoFiscal) || 0, // Passa o prejuízo fiscal para o serviço
+            parseFloat(prejuizoFiscal) || 0,
             tipoEmpresa,
             nomeEmpresa || "Empresa Exemplo",
             periodoAnalise,
@@ -346,16 +368,15 @@ const App: React.FC = () => {
 
   const handleExportPDF = () => {
     setExportingPDF(true);
-    // Rolagem para o topo para evitar que o html2canvas corte o conteúdo devido ao scroll
     window.scrollTo(0, 0);
     
     setTimeout(() => {
         const element = document.getElementById('resultado-imprimivel');
         if (element) {
             const opt = {
-                margin:       [0.5, 0.3, 0.5, 0.3], // Margens: Topo, Dir, Base, Esq
+                margin:       [0.5, 0.3, 0.5, 0.3], 
                 filename:     `analise-tributaria-${nomeEmpresa || 'empresa'}-${anoReferencia}.pdf`,
-                image:        { type: 'jpeg', quality: 1.0 }, // Máxima qualidade
+                image:        { type: 'jpeg', quality: 1.0 },
                 html2canvas:  { scale: 2, useCORS: true, scrollY: 0 }, 
                 jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
                 pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
@@ -369,7 +390,7 @@ const App: React.FC = () => {
         } else {
            setExportingPDF(false); 
         }
-    }, 500); // Aumentado o tempo de espera para garantir que o render esteja estável
+    }, 500); 
   };
 
   const handleExportCSV = () => {
@@ -387,12 +408,11 @@ const App: React.FC = () => {
     const detailHeaders = ["Regime", "Imposto Estimado (R$)", "Aliquota Efetiva (%)", "Detalhes"];
     const detailRows = resultado.analise.map(item => [
       item.regime,
-      item.impostoEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2, useGrouping: false }), // No grouping for easier Excel parsing sometimes
+      item.impostoEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2, useGrouping: false }),
       (item.aliquotaEfetiva * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
-      `"${item.detalhes.replace(/"/g, '""')}"` // Escape quotes for CSV
+      `"${item.detalhes.replace(/"/g, '""')}"`
     ]);
 
-    // Add BOM for Excel UTF-8 compatibility
     let csvContent = "\uFEFF"; 
     csvContent += headers.join(";") + "\n";
     csvContent += summaryRow.join(";") + "\n\n";
@@ -437,14 +457,18 @@ const App: React.FC = () => {
 
   const handleContactSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulação de envio
     alert('Mensagem enviada com sucesso! Entraremos em contato em breve.');
     setIsContactModalOpen(false);
   };
 
+  const getTotalDeductible = () => {
+      return dynamicExpenses
+        .filter(d => d.isDeductible && d.value)
+        .reduce((acc, curr) => acc + parseFloat(curr.value), 0);
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans transition-colors duration-300">
-      {/* Modal de Lógica */}
       <CalculationLogicModal isOpen={isCalcModalOpen} onClose={() => setIsCalcModalOpen(false)} />
 
       <header className="bg-gray-800 dark:bg-gray-900 shadow-md p-4 sticky top-0 z-40">
@@ -482,7 +506,6 @@ const App: React.FC = () => {
            </div>
 
           <form onSubmit={handleSubmit} className="space-y-8">
-            {/* Seção 1: Informações Cadastrais */}
             <section className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border-t-4 border-indigo-500 overflow-hidden">
               <div className="bg-indigo-50 dark:bg-indigo-900/20 px-6 py-4 border-b border-indigo-100 dark:border-indigo-800">
                 <h2 className="text-xl font-bold text-indigo-800 dark:text-indigo-300 flex items-center">
@@ -491,9 +514,13 @@ const App: React.FC = () => {
                 </h2>
               </div>
               <div className="p-6 sm:p-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="md:col-span-1 relative">
+                    <Input label="CNPJ" iconClass="fa-solid fa-id-card" id="cnpj" value={cnpj} onChange={(e) => setCnpj(formatCnpj(e.target.value))} onBlur={handleCnpjBlur} error={cnpjError} placeholder="00.000.000/0000-00" />
+                    {loadingCnpj && <span className="absolute right-3 top-9 text-indigo-500"><i className="fa-solid fa-spinner fa-spin"></i></span>}
+                </div>
                 <Input label="Nome da Empresa" iconClass="fa-solid fa-signature" id="nomeEmpresa" value={nomeEmpresa} onChange={(e) => setNomeEmpresa(e.target.value)} placeholder="Ex: Minha Empresa LTDA" />
                 <Input label="E-mail" iconClass="fa-solid fa-envelope" id="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="contato@empresa.com.br" type="email" />
-                <Input label="CNPJ" iconClass="fa-solid fa-id-card" id="cnpj" value={cnpj} onChange={(e) => setCnpj(formatCnpj(e.target.value))} onBlur={handleCnpjBlur} error={cnpjError} placeholder="00.000.000/0000-00" />
+                
                 <div className="flex gap-4">
                     <div className="flex-grow">
                         <Select label="Período" iconClass="fa-solid fa-calendar-days" id="periodoAnalise" value={periodoAnalise} onChange={(e) => setPeriodoAnalise(e.target.value)}>
@@ -507,8 +534,8 @@ const App: React.FC = () => {
                         <Input label="Ano Ref." iconClass="fa-solid fa-calendar" id="anoReferencia" value={anoReferencia} onChange={(e) => setAnoReferencia(e.target.value)} placeholder="2026" type="number" />
                     </div>
                 </div>
-                 <Select label="Tipo de Empresa" iconClass="fa-solid fa-briefcase" id="tipoEmpresa" value={tipoEmpresa} onChange={(e) => setTipoEmpresa(e.target.value)} required>
-                    <option value="">Selecione o tipo</option>
+                 <Select label="Atividade Principal" iconClass="fa-solid fa-briefcase" id="tipoEmpresa" value={tipoEmpresa} onChange={(e) => setTipoEmpresa(e.target.value)} required>
+                    <option value="">Selecione a atividade predominante</option>
                     <option value="Serviços">Serviços</option>
                     <option value="Comércio">Comércio</option>
                     <option value="Indústria">Indústria</option>
@@ -552,7 +579,6 @@ const App: React.FC = () => {
               </div>
             </section>
             
-             {/* Seção 2: Dados Financeiros */}
             <section className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border-t-4 border-green-500 overflow-hidden">
                 <div className="bg-green-50 dark:bg-green-900/20 px-6 py-4 border-b border-green-100 dark:border-green-800">
                     <h2 className="text-xl font-bold text-green-800 dark:text-green-300 flex items-center">
@@ -572,7 +598,6 @@ const App: React.FC = () => {
                             required 
                             tooltip="Informe a receita bruta total da empresa (vendas de produtos + serviços) antes de descontar impostos ou custos. É a base principal de cálculo." 
                         />
-                        {/* Alerta de Faturamento Limite do Simples */}
                         {faturamentoStatus === 'exceeded' && (
                             <div className="md:col-span-2 bg-red-50 dark:bg-red-900/30 border-l-4 border-red-500 p-4 rounded-r-md flex items-start gap-3">
                                 <i className="fa-solid fa-triangle-exclamation text-red-600 dark:text-red-400 mt-1"></i>
@@ -626,19 +651,18 @@ const App: React.FC = () => {
                     />
                     <div className="md:col-span-2">
                          <Input 
-                            label="Prejuízo Fiscal Acumulado (Opcional)" 
+                            label="Prejuízo Fiscal Acumulado Anual (Opcional)" 
                             iconClass="fa-solid fa-arrow-trend-down" 
                             id="prejuizoFiscal" 
                             value={prejuizoFiscal} 
                             onChange={(e) => setPrejuizoFiscal(e.target.value)} 
                             isCurrency 
-                            tooltip="Se a empresa possui prejuízos de anos anteriores, informe aqui. No Lucro Real, é possível abater esse prejuízo da base de cálculo do imposto, limitado a 30% do lucro do período." 
+                            tooltip="Se a empresa possui prejuízos acumulados de anos anteriores, informe aqui. No Lucro Real, é possível abater esse prejuízo da base de cálculo do IRPJ/CSLL, limitado a 30% do lucro do período." 
                         />
                     </div>
                 </div>
             </section>
 
-             {/* Seção 3: Despesas Detalhadas */}
             <section className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border-t-4 border-orange-500 overflow-hidden">
                 <div className="bg-orange-50 dark:bg-orange-900/20 px-6 py-4 border-b border-orange-100 dark:border-orange-800">
                     <h2 className="text-xl font-bold text-orange-800 dark:text-orange-300 flex items-center">
@@ -648,7 +672,7 @@ const App: React.FC = () => {
                 </div>
                 <div className="p-6 sm:p-8 space-y-4">
                     <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                        Detalhar despesas ajuda a calcular corretamente o <strong>Lucro Real</strong>, onde o imposto é pago apenas sobre o lucro líquido (Receita - Despesas).
+                        Marque "Dedutível" para despesas essenciais (aluguel, energia, insumos) para abater do Lucro Real e indicar crédito de PIS/COFINS.
                     </p>
                     {dynamicExpenses.map((expense, index) => (
                          <div key={expense.id} className="grid grid-cols-12 gap-2 items-end">
@@ -662,7 +686,7 @@ const App: React.FC = () => {
                                 <Input label={index === 0 ? "Valor" : ""} id={`exp-value-${expense.id}`} value={expense.value} onChange={(e) => handleExpenseChange(expense.id, 'value', e.target.value)} isCurrency placeholder="R$ 0,00" iconClass="fa-solid fa-brazilian-real-sign" />
                             </div>
                             <div className="col-span-10 sm:col-span-2 flex items-center justify-center h-10 mb-0 sm:mb-1">
-                                <label htmlFor={`exp-deduct-${expense.id}`} className="flex items-center space-x-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300 select-none">
+                                <label htmlFor={`exp-deduct-${expense.id}`} className="flex items-center space-x-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300 select-none" title="Marque se gera crédito PIS/COFINS ou abate IRPJ">
                                     <input id={`exp-deduct-${expense.id}`} type="checkbox" checked={expense.isDeductible} onChange={(e) => handleExpenseChange(expense.id, 'isDeductible', e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
                                     <span>Dedutível?</span>
                                 </label>
@@ -702,41 +726,40 @@ const App: React.FC = () => {
             </div>
           </form>
 
-         {/* Seção de Resultados */}
         {resultado && !loading && (
           <section id="resultado" className="mt-16">
             <div id="resultado-imprimivel">
                 
-                {/* Header Exclusivo para PDF (Oculto em tela) */}
-                <div id="pdf-header" className="hidden mb-4 border-b-2 border-indigo-600 pb-2">
+                {/* Header Exclusivo para PDF (Atualizado) */}
+                <div id="pdf-header" className="hidden mb-6 border-b-2 border-indigo-600 pb-4">
                    <div className="flex justify-between items-start">
-                       <div className="flex items-center gap-3">
-                           {/* Logo SVG simplificado para impressão */}
-                           <div className="w-12 h-12 text-indigo-700">
+                       <div className="flex items-center gap-4">
+                           {/* Logo SVG */}
+                           <div className="w-16 h-16 text-indigo-700">
                                 <svg viewBox="0 0 100 100" fill="currentColor">
                                     <path d="M50 0L93.3 25V75L50 100L6.7 75V25L50 0Z" />
                                 </svg>
                            </div>
                            <div>
-                               <h2 className="text-lg font-bold text-gray-800 uppercase tracking-widest leading-none">SP ASSESSORIA CONTÁBIL</h2>
-                               <p className="text-xs text-gray-500 mt-1">CNPJ: 12.345.678/0001-90 | CRC: SP-123456/O</p>
-                               <p className="text-xs text-gray-500">www.spassessoria.com.br</p>
+                               <h2 className="text-2xl font-bold text-gray-800 uppercase tracking-widest leading-none mb-1">SP ASSESSORIA CONTÁBIL</h2>
+                               <p className="text-sm text-gray-600 font-medium">Excelência em Inteligência Tributária</p>
+                               <p className="text-xs text-gray-500 mt-2">CNPJ: 12.345.678/0001-90 | CRC: SP-123456/O</p>
+                               <p className="text-xs text-gray-500">www.spassessoria.com.br | contato@spassessoria.com.br</p>
                            </div>
                        </div>
-                       <div className="text-right text-xs text-gray-500">
-                           <p className="font-semibold">Relatório Gerado em:</p>
-                           <p>{new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR')}</p>
-                           <p className="mt-1 text-indigo-600 font-bold">Uso Exclusivo do Cliente</p>
+                       <div className="text-right text-xs text-gray-500 flex flex-col justify-end h-full">
+                           <p className="font-semibold text-gray-700 mb-1">RELATÓRIO GERADO EM:</p>
+                           <p className="text-lg text-indigo-700 font-bold">{new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}</p>
+                           <p className="mt-2 text-gray-400 italic">Documento confidencial</p>
                        </div>
                    </div>
                 </div>
 
-                {/* Cabeçalho do Relatório com Resumo dos Dados (Exibido no PDF) */}
                 <div className="mb-6 bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-xl shadow-lg border-b-4 border-indigo-600">
                      <div className="flex justify-between items-start mb-6">
                         <div>
                            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Relatório de Planejamento Tributário</h1>
-                           <p className="text-sm text-gray-500">Gerado em {new Date().toLocaleDateString('pt-BR')}</p>
+                           <p className="text-sm text-gray-500">Baseado nos dados fornecidos</p>
                         </div>
                         <div className="text-right">
                             <p className="font-bold text-indigo-600 text-xl">{anoReferencia}</p>
@@ -750,7 +773,6 @@ const App: React.FC = () => {
                             <p className="mb-1"><span className="font-semibold text-gray-600 dark:text-gray-400">Razão Social:</span> {nomeEmpresa || 'Não informado'}</p>
                             <p className="mb-1"><span className="font-semibold text-gray-600 dark:text-gray-400">CNPJ:</span> {cnpj || 'Não informado'}</p>
                             <p className="mb-1"><span className="font-semibold text-gray-600 dark:text-gray-400">Tipo:</span> {tipoEmpresa}</p>
-                            <p className="mb-1"><span className="font-semibold text-gray-600 dark:text-gray-400">E-mail:</span> {email || 'N/A'}</p>
                             <div className="mt-2">
                                 <p className="font-semibold text-gray-600 dark:text-gray-400">Atividades (CNAE):</p>
                                 <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 pl-1 mt-1">
@@ -765,17 +787,21 @@ const App: React.FC = () => {
                                  <p className="mb-1"><span className="font-semibold text-gray-600 dark:text-gray-400">Fat. Monofásico:</span> {parseFloat(faturamentoMonofasico).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</p>
                             )}
                             <p className="mb-1"><span className="font-semibold text-gray-600 dark:text-gray-400">Folha de Pagamento:</span> {parseFloat(folhaPagamento || '0').toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</p>
-                            <p className="mb-1"><span className="font-semibold text-gray-600 dark:text-gray-400">Pró-Labore:</span> {parseFloat(proLabore || '0').toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</p>
                             {prejuizoFiscal && parseFloat(prejuizoFiscal) > 0 && (
                                  <p className="mb-1"><span className="font-semibold text-gray-600 dark:text-gray-400 text-red-500">Prejuízo Fiscal Acum.:</span> {parseFloat(prejuizoFiscal).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</p>
                             )}
                             
                             <h3 className="font-bold text-gray-700 dark:text-gray-300 border-b dark:border-gray-700 pb-1 mb-2 mt-4">Despesas Operacionais</h3>
+                            <div className="mb-2 bg-indigo-50 dark:bg-indigo-900/30 p-2 rounded">
+                                <p className="font-bold text-indigo-700 dark:text-indigo-300">
+                                    Total Dedutível (Base Lucro Real): {getTotalDeductible().toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
+                                </p>
+                            </div>
                             <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 pl-1 mt-1 max-h-40 overflow-hidden">
                                 {dynamicExpenses.filter(e => e.name && e.value).map(e => (
-                                    <li key={e.id} className="truncate">
+                                    <li key={e.id} className={`truncate ${e.isDeductible ? 'text-green-700 dark:text-green-400 font-medium' : ''}`}>
                                         {e.name}: {parseFloat(e.value).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})} 
-                                        {e.isDeductible ? <span className="text-xs text-green-600 ml-1">(Dedutível)</span> : ''}
+                                        {e.isDeductible ? <span className="text-xs ml-1 border border-green-500 rounded px-1">DEDUTÍVEL</span> : ''}
                                     </li>
                                 ))}
                                 {dynamicExpenses.filter(e => e.name && e.value).length === 0 && <li>Nenhuma despesa informada.</li>}
@@ -798,7 +824,6 @@ const App: React.FC = () => {
                     
                     <p className="text-center text-gray-600 dark:text-gray-400 mb-8">Com base nos dados fornecidos para <strong>{nomeEmpresa || 'sua empresa'}</strong> (Ref: {anoReferencia}), este é o resultado:</p>
                     
-                    {/* Card de Recomendação */}
                     <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-6 rounded-lg mb-8 shadow-md relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-4 opacity-10">
                             <i className="fa-solid fa-trophy text-6xl text-green-700"></i>
@@ -817,7 +842,6 @@ const App: React.FC = () => {
                         </p>
                     </div>
 
-                    {/* Cards de Detalhes dos Regimes */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         {resultado.analise.map((regime, index) => (
                              <div key={regime.regime} className="card-enter-animation" style={{ animationDelay: `${index * 150}ms` }}>
@@ -833,10 +857,11 @@ const App: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Footer Exclusivo para PDF (Oculto em tela) */}
-                <div id="pdf-footer" className="hidden mt-8 pt-4 border-t border-gray-200 text-center text-xs text-gray-500">
-                    <p>© {new Date().getFullYear()} SP Assessoria Contábil - Todos os direitos reservados.</p>
-                    <p>Este documento é uma estimativa baseada em inteligência artificial e não substitui a consultoria oficial.</p>
+                {/* Footer Exclusivo para PDF (Atualizado) */}
+                <div id="pdf-footer" className="hidden mt-8 pt-4 border-t border-gray-200 text-center">
+                    <p className="text-sm font-bold text-gray-600">SP ASSESSORIA CONTÁBIL</p>
+                    <p className="text-xs text-gray-500">© {new Date().getFullYear()} - Todos os direitos reservados.</p>
+                    <p className="text-xs text-gray-400 mt-1">Este documento é uma estimativa baseada em inteligência artificial e não substitui a consultoria oficial.</p>
                 </div>
 
              </div>
@@ -872,7 +897,6 @@ const App: React.FC = () => {
         </button>
       </footer>
       
-      {/* Save Modal */}
       {isSaveModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-8 shadow-xl w-full max-w-md card-enter-animation opacity-100">
@@ -887,7 +911,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Contact Modal */}
       {isContactModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-8 shadow-xl w-full max-w-lg card-enter-animation opacity-100">

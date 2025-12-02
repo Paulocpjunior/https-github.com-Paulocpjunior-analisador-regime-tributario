@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { RegimeResultado } from '../types';
 
@@ -11,14 +12,15 @@ const formatCurrency = (value: number) => {
 };
 
 const ResultCard: React.FC<ResultCardProps> = ({ data, isRecommended }) => {
-  const { regime, impostoEstimado, aliquotaEfetiva, detalhes } = data;
+  const { regime, impostoEstimado, aliquotaEfetiva, detalhes, issIcmsEstimado, valorCreditoPisCofins } = data;
 
   // Check for ineligibility messages to highlight them
   const isInelegivel = detalhes.toLowerCase().includes('não elegível') || 
                        detalhes.toLowerCase().includes('nao elegivel') || 
                        detalhes.toLowerCase().includes('impeditivo') ||
                        detalhes.toLowerCase().includes('inválido') ||
-                       detalhes.toLowerCase().includes('inexistente');
+                       detalhes.toLowerCase().includes('inexistente') ||
+                       impostoEstimado === 0;
 
   let borderColor = isRecommended ? 'border-green-500' : 'border-gray-200 dark:border-gray-700';
   let bgColor = isRecommended ? 'bg-green-50 dark:bg-green-900/20' : 'bg-white dark:bg-gray-800';
@@ -38,11 +40,31 @@ const ResultCard: React.FC<ResultCardProps> = ({ data, isRecommended }) => {
       <h3 className={`text-xl font-bold ${isInelegivel ? 'text-yellow-800 dark:text-yellow-300' : 'text-gray-800 dark:text-white'}`}>{regime}</h3>
       <div className="mt-4 space-y-3 flex-grow">
         <div className="flex justify-between items-baseline">
-          <span className="text-gray-600 dark:text-gray-400">Imposto Anual Estimado:</span>
-          <span className={`text-2xl font-semibold ${isInelegivel ? 'text-gray-500 dark:text-gray-400' : 'text-indigo-600 dark:text-indigo-400'}`}>{formatCurrency(impostoEstimado)}</span>
+          <span className="text-gray-600 dark:text-gray-400 font-semibold">Total Anual Estimado:</span>
+          <span className={`text-2xl font-bold ${isInelegivel ? 'text-gray-500 dark:text-gray-400' : 'text-indigo-600 dark:text-indigo-400'}`}>{formatCurrency(impostoEstimado)}</span>
         </div>
-        <div className="flex justify-between items-baseline">
-          <span className="text-gray-600 dark:text-gray-400">Alíquota Efetiva:</span>
+        
+        {issIcmsEstimado && issIcmsEstimado > 0 ? (
+           <div className="flex justify-between items-baseline text-sm">
+            <span className="text-gray-500 dark:text-gray-400 border-b border-dotted border-gray-400 cursor-help" title="Imposto Sobre Serviços (ISS) ou Circulação de Mercadorias (ICMS) calculados separadamente.">Incluindo ISS/ICMS (Est.):</span>
+            <span className="text-gray-700 dark:text-gray-300 font-medium">{formatCurrency(issIcmsEstimado)}</span>
+          </div>
+        ) : null}
+
+        {valorCreditoPisCofins && valorCreditoPisCofins > 0 ? (
+           <div className="mt-2 p-2 rounded bg-green-100 dark:bg-green-900/30 border border-green-200 dark:border-green-800">
+             <div className="flex justify-between items-center text-sm">
+              <span className="text-green-800 dark:text-green-300 font-semibold flex items-center">
+                 <i className="fa-solid fa-arrow-down-long mr-1"></i> Crédito PIS/COFINS
+              </span>
+              <span className="text-green-700 dark:text-green-300 font-bold">-{formatCurrency(valorCreditoPisCofins)}</span>
+            </div>
+            <p className="text-[10px] text-green-600 dark:text-green-400 mt-1">Abatido da base de cálculo devido às despesas dedutíveis.</p>
+          </div>
+        ) : null}
+
+        <div className="flex justify-between items-baseline border-t border-gray-200 dark:border-gray-700 pt-2">
+          <span className="text-gray-600 dark:text-gray-400">Alíquota Efetiva Total:</span>
           <span className={`text-lg font-medium ${isInelegivel ? 'text-gray-500 dark:text-gray-400' : 'text-gray-800 dark:text-gray-200'}`}>{isInelegivel ? 'N/A' : `${(aliquotaEfetiva * 100).toFixed(2)}%`}</span>
         </div>
       </div>

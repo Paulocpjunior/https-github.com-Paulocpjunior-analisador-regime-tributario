@@ -3,6 +3,8 @@ export interface RegimeResultado {
   regime: 'Simples Nacional' | 'Lucro Presumido' | 'Lucro Real' | 'MEI';
   impostoEstimado: number;
   aliquotaEfetiva: number;
+  issIcmsEstimado?: number; // Novo campo para separar impostos locais
+  valorCreditoPisCofins?: number; // Novo campo para Lucro Real
   detalhes: string;
 }
 

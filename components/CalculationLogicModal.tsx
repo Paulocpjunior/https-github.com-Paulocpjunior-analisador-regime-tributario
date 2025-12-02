@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface CalculationLogicModalProps {
@@ -29,6 +30,14 @@ const CalculationLogicModal: React.FC<CalculationLogicModalProps> = ({ isOpen, o
         {/* Content */}
         <div className="p-6 space-y-8">
           
+           <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border-l-4 border-blue-500">
+             <h3 className="font-bold text-blue-800 dark:text-blue-300 mb-2">Nota sobre ISS e ICMS</h3>
+             <p className="text-sm text-blue-700 dark:text-blue-200">
+               Os impostos estaduais (ICMS) e municipais (ISS) variam de acordo com o estado e município da sua empresa. 
+               Como não temos a localização exata, <strong>a inteligência artificial realiza uma estimativa média</strong> baseada nas alíquotas padrão nacionais para compor o custo total tributário.
+             </p>
+           </div>
+
           <section>
             <h3 className="text-lg font-bold text-green-600 dark:text-green-400 mb-2 border-l-4 border-green-500 pl-3">
               Simples Nacional
@@ -39,7 +48,7 @@ const CalculationLogicModal: React.FC<CalculationLogicModalProps> = ({ isOpen, o
             <ul className="list-disc list-inside space-y-1 text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg">
               <li><strong>Fator R:</strong> Para atividades de serviço (Anexo V), verificamos se a sua folha de pagamento (incluindo Pró-Labore) é igual ou superior a 28% do faturamento. Se for, a empresa pode ser tributada pelo Anexo III (mais barato).</li>
               <li><strong>Monofásico:</strong> Se você revende produtos monofásicos (bebidas, autopeças, etc.), descontamos a parcela do PIS/COFINS da alíquota total.</li>
-              <li><strong>Alíquota Efetiva:</strong> Calculada progressivamente conforme a faixa de faturamento dos últimos 12 meses.</li>
+              <li><strong>Alíquota Efetiva:</strong> Calculada progressivamente conforme a faixa de faturamento dos últimos 12 meses. O ISS/ICMS já está embutido na guia única (DAS).</li>
             </ul>
           </section>
 
@@ -53,7 +62,7 @@ const CalculationLogicModal: React.FC<CalculationLogicModalProps> = ({ isOpen, o
             <ul className="list-disc list-inside space-y-1 text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg">
               <li><strong>Base de Cálculo:</strong> O governo "presume" seu lucro (Ex: 8% para comércio, 32% para serviços) e aplica IRPJ (15% + adicional) e CSLL (9%) sobre essa base.</li>
               <li><strong>PIS/COFINS:</strong> Calculados no regime cumulativo (3,65% sobre o faturamento total), exceto para produtos monofásicos (alíquota zero).</li>
-              <li><strong>ISS/ICMS:</strong> Calculados separadamente conforme o município ou estado (estimados pela IA).</li>
+              <li><strong>ISS/ICMS:</strong> Calculados separadamente (fora da guia federal) e estimados pela IA neste relatório.</li>
             </ul>
           </section>
 
@@ -66,7 +75,7 @@ const CalculationLogicModal: React.FC<CalculationLogicModalProps> = ({ isOpen, o
             </p>
             <ul className="list-disc list-inside space-y-1 text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg">
               <li><strong>Lucro Líquido Real:</strong> Subtraímos todas as suas despesas dedutíveis (Folha, Aluguel, Energia, etc.) do Faturamento. O IRPJ e CSLL incidem apenas sobre o que sobrar.</li>
-              <li><strong>PIS/COFINS:</strong> Regime não-cumulativo (9,25%), mas você ganha créditos sobre suas compras e despesas insumos.</li>
+              <li><strong>PIS/COFINS:</strong> Regime não-cumulativo (9,25%). <strong>Atenção:</strong> Você abate desse valor os créditos gerados por insumos, energia e aluguel. No nosso formulário, marque as despesas como "Dedutível" para que a IA considere esse crédito.</li>
             </ul>
           </section>
 

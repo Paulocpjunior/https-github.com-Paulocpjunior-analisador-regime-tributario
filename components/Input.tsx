@@ -18,8 +18,12 @@ const Input: React.FC<InputProps> = ({ label, iconClass, error, isCurrency, tool
 
   // Formata valor numérico (string ou number) para BRL
   const formatBRL = (val: string | number) => {
-    if (!val && val !== 0) return '';
+    // Se for undefined, null ou string vazia, retorna vazio
+    if (val === '' || val === undefined || val === null) return '';
+    
     const numberVal = typeof val === 'string' ? parseFloat(val) : val;
+    
+    // Se não for um número válido, retorna vazio
     if (isNaN(numberVal)) return '';
     
     return numberVal.toLocaleString('pt-BR', {
@@ -30,10 +34,18 @@ const Input: React.FC<InputProps> = ({ label, iconClass, error, isCurrency, tool
     });
   };
 
-  // Sincroniza o valor de exibição quando o valor externo muda (reset de form, carregamento de dados)
+  // Sincroniza o valor de exibição quando o valor externo muda
   useEffect(() => {
     if (isCurrency) {
-      setDisplayValue(formatBRL(value as string));
+      // Se o valor for 0 numérico, queremos exibir "R$ 0,00"
+      // Se for string vazia, exibimos vazio.
+      if (value === 0 || value === '0') {
+         setDisplayValue('R$ 0,00');
+      } else if (!value) {
+         setDisplayValue('');
+      } else {
+         setDisplayValue(formatBRL(value as string));
+      }
     } else {
       setDisplayValue(value as string);
     }
@@ -55,10 +67,16 @@ const Input: React.FC<InputProps> = ({ label, iconClass, error, isCurrency, tool
       }
 
       // Converte para float (ex: 1234 -> 12.34)
+      // Tratamento para garantir que zero seja zero
       const numericValue = parseInt(onlyDigits, 10) / 100;
       
       // Atualiza o display visualmente formatado
-      setDisplayValue(formatBRL(numericValue));
+      setDisplayValue(numericValue.toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }));
 
       // Envia o valor float puro (string '12.34') para o pai processar cálculos
       const syntheticEvent = { ...e, target: { ...e.target, value: numericValue.toFixed(2) } };
@@ -71,19 +89,21 @@ const Input: React.FC<InputProps> = ({ label, iconClass, error, isCurrency, tool
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center mb-1">
-        <label htmlFor={props.id} className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          {label}
-        </label>
-        {tooltip && (
-            <div className="ml-1.5 relative group flex items-center">
-                <i className="fa-solid fa-circle-info text-gray-400 cursor-help text-xs"></i>
-                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2 text-xs font-normal text-white bg-gray-900 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-lg">
-                    {tooltip}
-                </span>
-            </div>
-        )}
-      </div>
+      {label && (
+        <div className="flex items-center mb-1">
+            <label htmlFor={props.id} className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            {label}
+            </label>
+            {tooltip && (
+                <div className="ml-1.5 relative group flex items-center">
+                    <i className="fa-solid fa-circle-info text-gray-400 cursor-help text-xs"></i>
+                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2 text-xs font-normal text-white bg-gray-900 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-lg">
+                        {tooltip}
+                    </span>
+                </div>
+            )}
+        </div>
+      )}
       <div className="relative rounded-md shadow-sm flex-grow">
         <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
           <i className={`${iconClass} ${error ? 'text-red-500' : 'text-gray-400'}`} aria-hidden="true"></i>

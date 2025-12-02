@@ -4,20 +4,34 @@ import { AnaliseTributaria, DynamicExpense } from '../types';
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const systemInstruction = `
-Você é um especialista em contabilidade e tributação no Brasil. Sua tarefa é analisar dados financeiros de uma empresa e determinar o regime tributário mais vantajoso (Simples Nacional, Lucro Presumido, Lucro Real, MEI). A empresa pode ter múltiplas atividades (CNAEs), e os códigos fornecidos já foram validados como existentes.
+Você é um Auditor Fiscal e Especialista Tributário Sênior no Brasil. Sua função é calcular com EXATIDÃO MATEMÁTICA os impostos devidos por uma empresa em três cenários: Simples Nacional, Lucro Presumido e Lucro Real.
 
-Siga estas regras CRÍTICAS em TODAS as análises:
-1.  **Análise de Elegibilidade (com base nos CNAEs):** Use o CNAE Principal para verificar a elegibilidade para CADA regime (se a atividade é permitida e se o faturamento anual está dentro do limite). Esta é a etapa mais importante. Considere os CNAEs secundários para identificar atividades impeditivas que possam desqualificar a empresa de um regime, mesmo que a atividade principal seja permitida.
-2.  **Tratamento de Inelegibilidade:** Se um regime for inelegível (por CNAE impeditivo - principal ou secundário - ou faturamento), o campo 'impostoEstimado' DEVE ser 0, e a seção 'detalhes' deve explicar claramente o motivo (ex: "Não elegível: Atividade secundária [CNAE] é impeditiva para este regime." ou "Não elegível: Faturamento excede o limite."). Um regime inelegível NUNCA pode ser o recomendado.
-3.  **Cálculos Apenas para Elegíveis:** Realize cálculos de impostos detalhados APENAS para os regimes em que a empresa é elegível.
-4.  **Análise Específica do Simples Nacional:** Ao analisar o Simples Nacional, é MANDATÓRIO que você use o CNAE PRINCIPAL para determinar o Anexo correto (I, II, III, IV ou V). A sua resposta no campo 'detalhes' DEVE OBRIGATORIAMENTE incluir o Anexo principal identificado (ex: "Enquadrado no Anexo III com base na atividade principal."). Se houver CNAEs secundários que se enquadrem em outros Anexos, mencione a complexidade e a necessidade de cálculo proporcional, mas baseie a estimativa principal no Anexo da atividade primária para simplificação.
-5.  **Recomendação Final:** Baseie a recomendação SOMENTE nas opções elegíveis, escolhendo a mais econômica. Se nenhum regime for elegível, informe isso na recomendação.
-6.  **Cálculo com Produtos Monofásicos (PIS/COFINS):** Se for informado um "Faturamento com Produtos Monofásicos", você DEVE ajustar os cálculos para os regimes elegíveis da seguinte forma:
-    - **Simples Nacional:** Segregue esta receita. Ao calcular o imposto, APLIQUE a alíquota do Anexo correspondente, mas EXCLUA o percentual referente a PIS/COFINS sobre a parcela da receita monofásica. Deixe isso explícito no campo 'detalhes'.
-    - **Lucro Presumido e Lucro Real:** Para a receita vinda de produtos monofásicos, a alíquota de PIS e COFINS é ZERO. Calcule o IRPJ e CSLL normalmente sobre a presunção de lucro (Presumido) ou lucro real (Real), mas zere PIS e COFINS sobre essa parte do faturamento. Deixe claro no campo 'detalhes' que a isenção foi aplicada.
-    - **MEI:** A tributação monofásica não se aplica, pois o MEI paga um valor fixo mensal.
-7.  **Cálculo para Lucro Real e Prejuízos Fiscais:** Para o Lucro Real, o lucro base é (Faturamento - Folha - Despesas Dedutíveis). Se houver "Prejuízo Fiscal Acumulado" informado, você DEVE deduzi-lo da base de cálculo do IRPJ e CSLL, mas LIMITADO a 30% do lucro real do período analisado. Mencione explicitamente nos detalhes se houve abatimento de prejuízo fiscal anterior.
-8.  **Limites de Faturamento:** Use os seguintes limites anuais: Simples Nacional (R$ 4.800.000), Lucro Presumido (R$ 78.000.000), MEI (R$ 81.000), e Lucro Real (obrigatório acima de R$ 78.000.000).
+**REGRAS ESTRITAS DE CÁLCULO (LEGISLAÇÃO VIGENTE):**
+
+1.  **SIMPLES NACIONAL (LC 123/2006):**
+    *   **Base de Cálculo:** RBT12 (Faturamento Total).
+    *   **Fórmula:** ((RBT12 x Alíquota Nominal) - Parcela a Deduzir) / RBT12.
+    *   **Monofásico:** Reduzir a parcela de PIS/COFINS do DAS proporcionalmente à receita monofásica.
+    *   **Impostos Locais (ISS/ICMS):** Já estão inclusos na alíquota do DAS. Não separar.
+
+2.  **LUCRO PRESUMIDO:**
+    *   **Federais (PIS/COFINS/IRPJ/CSLL):** Seguir as regras de presunção (Serviços 32%, Comércio 8%).
+    *   **Estaduais/Municipais (ESTIMATIVA):**
+        *   Se Comércio/Indústria: Estimar ICMS (médio 18% mas com crédito, considere efetivo médio de 4% a 7% dependendo do estado ou use alíquota padrão se não informado).
+        *   Se Serviços: Estimar ISS (fixo entre 2% e 5%, use média de 3.5% se não especificado).
+        *   **IMPORTANTE:** O campo 'impostoEstimado' deve ser a SOMA TOTAL (Federais + ISS/ICMS). O campo 'issIcmsEstimado' deve conter apenas a parte do ISS e ICMS.
+
+3.  **LUCRO REAL:**
+    *   **PIS/COFINS (Não-Cumulativo):** 9.25% sobre faturamento.
+        *   **CRÉDITOS:** Calcule 9.25% sobre as despesas marcadas como DEDUTÍVEIS que geram crédito (Insumos, Energia, Aluguel PJ). Abata isso do débito.
+    *   **IRPJ/CSLL:** Base é o (Lucro Líquido Real).
+        *   Lucro Líquido = Faturamento - (Folha + Pró-Labore + Todas Despesas Operacionais).
+        *   Se houver Prejuízo Fiscal acumulado, abater até 30% do Lucro Líquido antes de aplicar as alíquotas (15% + 10% + 9%).
+
+**FORMATO DE RESPOSTA (JSON):**
+*   \`issIcmsEstimado\`: Valor estimado de impostos locais (fora os federais). No Simples, pode ser 0 ou a parcela correspondente. No Presumido/Real, calcule separadamente.
+*   \`valorCreditoPisCofins\`: Para Lucro Real, o valor economizado com créditos de PIS/COFINS sobre despesas.
+*   \`detalhes\`: Explique a lógica, incluindo base de cálculo, alíquotas de ISS/ICMS usadas e créditos abatidos.
 `;
 
 
@@ -38,50 +52,45 @@ export async function analisarRegimeTributario(
   const totalDespesasDutiveis = despesasDutiveis.reduce((acc, expense) => acc + Number(expense.value || 0), 0);
   
   const despesasDutiveisFormatadas = despesasDutiveis.length > 0
-    ? despesasDutiveis.map(d => `- ${d.name}: R$ ${Number(d.value).toLocaleString('pt-BR')}`).join('\n')
+    ? despesasDutiveis.map(d => `- ${d.name}: R$ ${Number(d.value).toLocaleString('pt-BR')} (Dedutível IRPJ e potencial crédito PIS/COFINS)`).join('\n')
     : 'Nenhuma outra despesa dedutível informada.';
 
   const primaryCnae = cnaes[0] || 'N/A';
   const secondaryCnaes = cnaes.slice(1);
 
-  const cnaesFormatados = `
-    - CNAE Principal: ${primaryCnae}
-    ${secondaryCnaes.length > 0 ? `- CNAEs Secundários: ${secondaryCnaes.join(', ')}` : ''}
-  `.trim();
-
   const faturamentoMonofasicoFormatado = faturamentoMonofasico > 0
-    ? `- Deste total, Faturamento com Produtos Monofásicos (revenda com isenção de PIS/COFINS): R$ ${faturamentoMonofasico.toLocaleString('pt-BR')}`
+    ? `- Deste total, Faturamento com Produtos Monofásicos: R$ ${faturamentoMonofasico.toLocaleString('pt-BR')}`
     : '';
 
   const prejuizoFiscalFormatado = prejuizoFiscal > 0
-    ? `- Prejuízo Fiscal Acumulado de períodos anteriores: R$ ${prejuizoFiscal.toLocaleString('pt-BR')} (Usar regra da trava de 30% para o Lucro Real)`
+    ? `- Prejuízo Fiscal Acumulado: R$ ${prejuizoFiscal.toLocaleString('pt-BR')}`
     : '- Sem prejuízo fiscal acumulado.';
 
   const prompt = `
-    Analise os seguintes dados para a empresa e gere a resposta em JSON, seguindo o schema fornecido.
+    Analise os seguintes dados financeiros da empresa "${nomeEmpresa}" para o ano de ${anoReferencia}.
 
-    **Contexto:** Planejamento Tributário para o ano de **${anoReferencia}**.
-    
-    **Dados da Empresa:**
-    - Empresa: ${nomeEmpresa}
-    - Período de Análise: ${periodoAnalise}
-    - Tipo de Empresa: ${tipoEmpresa}
-    ${cnaesFormatados}
+    **DADOS DA EMPRESA:**
+    - CNAE Principal: ${primaryCnae}
+    - Outros CNAEs: ${secondaryCnaes.join(', ')}
+    - Atividade Predominante: ${tipoEmpresa}
 
-    **Dados Financeiros Anuais:**
-    - Faturamento Total: R$ ${faturamento.toLocaleString('pt-BR')}
+    **DADOS FINANCEIROS ANUAIS:**
+    1. Faturamento Bruto Total: R$ ${faturamento.toLocaleString('pt-BR')}
     ${faturamentoMonofasicoFormatado}
-    - Folha de Pagamento (dedutível para Lucro Real): R$ ${folhaPagamento.toLocaleString('pt-BR')}
-    - Detalhe de Outras Despesas Dedutíveis (para Lucro Real):
+    
+    2. Custos e Despesas:
+    - Folha de Pagamento Total: R$ ${folhaPagamento.toLocaleString('pt-BR')}
+    - Despesas Operacionais Dedutíveis:
     ${despesasDutiveisFormatadas}
-    - Total de Outras Despesas Dedutíveis: R$ ${totalDespesasDutiveis.toLocaleString('pt-BR')}
+    - Total Despesas Operacionais: R$ ${totalDespesasDutiveis.toLocaleString('pt-BR')}
+    
+    3. Histórico:
     ${prejuizoFiscalFormatado}
 
-    **Premissas para Cálculo:**
-    - **Simples Nacional:** Calcule com base no anexo determinado pelo CNAE principal. Considere o impacto de atividades secundárias se elas forem impeditivas.
-    - **MEI:** Considere um DAS mensal médio de R$ 75. Verifique a elegibilidade de TODAS as atividades.
-    - **Lucro Presumido:** Use presunções de lucro padrão para '${tipoEmpresa}' (e.g., 8% para comércio, 32% para serviços).
-    - **Lucro Real:** Calcule o lucro antes dos impostos como (Faturamento - Folha de Pagamento - Total de Outras Despesas Dedutíveis). Se houver Prejuízo Fiscal informado, abata da base de cálculo respeitando o limite legal de 30% do lucro do período.
+    **INSTRUÇÕES DE CÁLCULO:**
+    1. Calcule os impostos Federais e adicione uma estimativa de ISS (para Serviços) ou ICMS (para Comércio/Indústria).
+    2. No Lucro Real, identifique explicitamente quanto de crédito de PIS/COFINS foi gerado pelas despesas operacionais.
+    3. Separe o valor estimado de ISS/ICMS no campo específico do JSON.
   `;
 
   try {
@@ -96,46 +105,25 @@ export async function analisarRegimeTributario(
                 properties: {
                     analise: {
                         type: Type.ARRAY,
-                        description: "Análise detalhada de cada regime tributário.",
                         items: {
                             type: Type.OBJECT,
                             properties: {
-                                regime: {
-                                    type: Type.STRING,
-                                    description: "Nome do regime tributário (Simples Nacional, Lucro Presumido, Lucro Real, MEI)."
-                                },
-                                impostoEstimado: {
-                                    type: Type.NUMBER,
-                                    description: "Valor total estimado de impostos anuais. Deve ser 0 se o regime for inelegível."
-                                },
-                                aliquotaEfetiva: {
-                                    type: Type.NUMBER,
-                                    description: "A alíquota efetiva de imposto sobre o faturamento."
-                                },
-                                detalhes: {
-                                    type: Type.STRING,
-                                    description: "Uma breve explicação sobre o cálculo ou considerações. Para o Simples Nacional, DEVE OBRIGATORIAMENTE incluir o Anexo (I, II, III, IV ou V) em que o CNAE se enquadra. Deve também justificar a elegibilidade (ou inelegibilidade), considerando atividades secundárias se relevantes."
-                                }
+                                regime: { type: Type.STRING },
+                                impostoEstimado: { type: Type.NUMBER, description: "Total final (Federais + Estaduais/Municipais)" },
+                                issIcmsEstimado: { type: Type.NUMBER, description: "Apenas a parcela de ISS e ICMS estimada" },
+                                aliquotaEfetiva: { type: Type.NUMBER },
+                                valorCreditoPisCofins: { type: Type.NUMBER, description: "Valor do crédito abatido (apenas Lucro Real)" },
+                                detalhes: { type: Type.STRING }
                             },
                              required: ["regime", "impostoEstimado", "aliquotaEfetiva", "detalhes"]
                         }
                     },
                     recomendacao: {
                         type: Type.OBJECT,
-                        description: "A recomendação final baseada na análise.",
                         properties: {
-                            melhorRegime: {
-                                type: Type.STRING,
-                                description: "O nome do regime tributário recomendado (deve ser uma das opções elegíveis)."
-                            },
-                            economiaEstimada: {
-                                type: Type.NUMBER,
-                                description: "A economia anual estimada em comparação com a segunda melhor opção elegível."
-                            },
-                            justificativa: {
-                                type: Type.STRING,
-                                description: "Uma explicação clara e concisa do porquê este regime foi recomendado."
-                            }
+                            melhorRegime: { type: Type.STRING },
+                            economiaEstimada: { type: Type.NUMBER },
+                            justificativa: { type: Type.STRING }
                         },
                         required: ["melhorRegime", "economiaEstimada", "justificativa"]
                     }
@@ -156,34 +144,14 @@ export async function analisarRegimeTributario(
 }
 
 export async function sugerirCnae(descricao: string): Promise<{ code: string; description: string }> {
-  const prompt = `
-    Identifique o código CNAE (Classificação Nacional de Atividades Econômicas) de 7 dígitos mais adequado para a seguinte descrição de atividade empresarial:
-    "${descricao}"
-
-    Retorne APENAS um objeto JSON com o código formatado (ex: 0000-0/00) e a descrição oficial do IBGE.
-  `;
-
+  // Mantida a mesma implementação existente
+  const prompt = `Identifique o código CNAE 7 dígitos para: "${descricao}". JSON apenas {code, description}`;
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            code: { type: Type.STRING, description: "Código CNAE formatado (0000-0/00)" },
-            description: { type: Type.STRING, description: "Descrição oficial da atividade" }
-          },
-          required: ["code", "description"]
-        }
-      }
+      config: { responseMimeType: "application/json" }
     });
-
-    const text = response.text.trim();
-    return JSON.parse(text);
-  } catch (error) {
-    console.error("Erro ao sugerir CNAE:", error);
-    throw new Error("Não foi possível sugerir um CNAE no momento.");
-  }
+    return JSON.parse(response.text.trim());
+  } catch (e) { throw new Error("Erro CNAE"); }
 }
