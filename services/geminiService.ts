@@ -154,3 +154,36 @@ export async function analisarRegimeTributario(
     throw new Error("Não foi possível obter a análise. Verifique os dados e tente novamente.");
   }
 }
+
+export async function sugerirCnae(descricao: string): Promise<{ code: string; description: string }> {
+  const prompt = `
+    Identifique o código CNAE (Classificação Nacional de Atividades Econômicas) de 7 dígitos mais adequado para a seguinte descrição de atividade empresarial:
+    "${descricao}"
+
+    Retorne APENAS um objeto JSON com o código formatado (ex: 0000-0/00) e a descrição oficial do IBGE.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            code: { type: Type.STRING, description: "Código CNAE formatado (0000-0/00)" },
+            description: { type: Type.STRING, description: "Descrição oficial da atividade" }
+          },
+          required: ["code", "description"]
+        }
+      }
+    });
+
+    const text = response.text.trim();
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("Erro ao sugerir CNAE:", error);
+    throw new Error("Não foi possível sugerir um CNAE no momento.");
+  }
+}

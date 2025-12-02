@@ -1,77 +1,73 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
   label: string;
   iconClass: string;
   error?: string | null;
   isCurrency?: boolean;
   tooltip?: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-const Input: React.FC<InputProps> = ({ label, iconClass, error, isCurrency, tooltip, ...props }) => {
-  const [isFocused, setIsFocused] = useState(false);
+const Input: React.FC<InputProps> = ({ label, iconClass, error, isCurrency, tooltip, value, onChange, ...props }) => {
+  const [displayValue, setDisplayValue] = useState('');
 
   const errorInputClasses = "border-red-500 text-red-600 focus:border-red-500 focus:ring-red-500";
   const defaultInputClasses = "border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500";
 
-  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    if (isCurrency) setIsFocused(true);
-    props.onFocus?.(e);
+  // Formata valor numérico (string ou number) para BRL
+  const formatBRL = (val: string | number) => {
+    if (!val && val !== 0) return '';
+    const numberVal = typeof val === 'string' ? parseFloat(val) : val;
+    if (isNaN(numberVal)) return '';
+    
+    return numberVal.toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
   };
 
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    if (isCurrency) setIsFocused(false);
-    props.onBlur?.(e);
-  };
+  // Sincroniza o valor de exibição quando o valor externo muda (reset de form, carregamento de dados)
+  useEffect(() => {
+    if (isCurrency) {
+      setDisplayValue(formatBRL(value as string));
+    } else {
+      setDisplayValue(value as string);
+    }
+  }, [value, isCurrency]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!props.onChange) return;
-    
-    const rawValue = e.target.value;
-    
-    // Clean the value, allowing only digits and one separator (comma or period)
-    const cleanedValue = rawValue.replace(/[^0-9,.]/g, '');
-    let numericString = cleanedValue.replace(',', '.'); // Use dot as separator internally
+    let newValue = e.target.value;
 
-    const parts = numericString.split('.');
-    
-    // If there are multiple dots, consolidate them
-    if (parts.length > 2) {
-        numericString = parts[0] + '.' + parts.slice(1).join('');
-    }
-    
-    // Limit to two decimal places
-    const decimalParts = numericString.split('.');
-    if (decimalParts[1] && decimalParts[1].length > 2) {
-        numericString = decimalParts[0] + '.' + decimalParts[1].substring(0, 2);
-    }
-    
-    // Create a new event-like object to pass the raw numeric string to the parent
-    const newEvent = { ...e, target: { ...e.target, value: numericString } };
-    props.onChange(newEvent as React.ChangeEvent<HTMLInputElement>);
-  };
+    if (isCurrency) {
+      // Remove tudo que não é dígito
+      const onlyDigits = newValue.replace(/\D/g, '');
 
-  const value = props.value as string;
-  let displayValue = value;
-
-  if (isCurrency) {
-    if (isFocused) {
-      // On focus, show the raw value but with a comma for easier pt-BR editing
-      displayValue = value ? value.replace('.', ',') : '';
-    } else {
-      // On blur, if there's a value, format it as BRL currency
-      const number = parseFloat(value);
-      if (!isNaN(number) && value) {
-        displayValue = new Intl.NumberFormat('pt-BR', {
-          style: 'currency',
-          currency: 'BRL',
-        }).format(number);
-      } else {
-        displayValue = ''; // Show nothing if the value is empty or invalid
+      if (onlyDigits === '') {
+        setDisplayValue('');
+        // Envia vazio para o pai
+        const syntheticEvent = { ...e, target: { ...e.target, value: '' } };
+        onChange(syntheticEvent);
+        return;
       }
+
+      // Converte para float (ex: 1234 -> 12.34)
+      const numericValue = parseInt(onlyDigits, 10) / 100;
+      
+      // Atualiza o display visualmente formatado
+      setDisplayValue(formatBRL(numericValue));
+
+      // Envia o valor float puro (string '12.34') para o pai processar cálculos
+      const syntheticEvent = { ...e, target: { ...e.target, value: numericValue.toFixed(2) } };
+      onChange(syntheticEvent);
+    } else {
+      setDisplayValue(newValue);
+      onChange(e);
     }
-  }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -94,14 +90,13 @@ const Input: React.FC<InputProps> = ({ label, iconClass, error, isCurrency, tool
         </div>
         <input
           {...props}
-          type={isCurrency ? 'text' : props.type} // Use 'text' for currency to allow formatting
+          type="text" // Sempre text para controlar a máscara manualmente
           value={displayValue}
-          onChange={isCurrency ? handleChange : props.onChange}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
+          onChange={handleChange}
           className={`block w-full h-full rounded-md bg-white dark:bg-gray-700 pl-10 pr-4 py-2 sm:text-sm ${error ? errorInputClasses : defaultInputClasses}`}
           aria-invalid={!!error}
           aria-describedby={error ? `${props.id}-error` : undefined}
+          autoComplete="off"
         />
       </div>
       {error && (

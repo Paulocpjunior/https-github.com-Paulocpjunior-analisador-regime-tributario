@@ -9,7 +9,7 @@ import Logo from './components/Logo';
 import SavedAnalyses from './components/SavedAnalyses';
 import IconPicker from './components/IconPicker';
 import CalculationLogicModal from './components/CalculationLogicModal'; // Importação do Modal
-import { analisarRegimeTributario } from './services/geminiService';
+import { analisarRegimeTributario, sugerirCnae } from './services/geminiService';
 import { getSavedAnalyses, saveAnalysis, deleteAnalysis } from './services/storageService';
 import { fetchCnaeDescription } from './services/cnaeService';
 import type { AnaliseTributaria, AnalysisInputs, SavedAnalysis } from './types';
@@ -71,7 +71,8 @@ const App: React.FC = () => {
     "• Anexo II: Indústria (fábricas)\n" +
     "• Anexo III: Serviços de instalação, reparos, contabilidade, viagens\n" +
     "• Anexo IV: Serviços de limpeza, vigilância, obras, advocacia\n" +
-    "• Anexo V: Serviços intelectuais/tecnologia (sujeito ao Fator R)";
+    "• Anexo V: Serviços intelectuais/tecnologia (sujeito ao Fator R)\n\n" + 
+    "✨ IA Integrada: Digite o nome da atividade (ex: 'Desenvolvimento de Software') e tecle TAB para buscar o código automaticamente.";
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -103,12 +104,21 @@ const App: React.FC = () => {
         .replace(/(\d{4})(\d)/, '$1-$2')
         .slice(0, 18); // Max length for formatted CNPJ
   };
-   const formatCnae = (value: string) => {
-        return value
-            .replace(/\D/g, '')
+  
+   // Removida a formatação estrita para permitir digitação de texto para busca por IA
+   const formatCnaeInput = (value: string) => {
+        // Se conter apenas números e símbolos de formatação, aplica a máscara
+        const numbersOnly = value.replace(/[^\d]/g, '');
+        // Se o usuário estiver digitando texto (descrição), não aplica máscara
+        const hasLetters = /[a-zA-Z]/.test(value);
+        
+        if (!hasLetters && numbersOnly.length > 0) {
+             return numbersOnly
             .replace(/(\d{4})(\d)/, '$1-$2')
             .replace(/(-\d)(\d{2})/, '$1/$2')
             .slice(0, 9);
+        }
+        return value;
     };
 
   const handleCnpjBlur = (e: React.FocusEvent<HTMLInputElement>) => {
@@ -125,26 +135,44 @@ const App: React.FC = () => {
     if (cnaeIndex === -1) return;
 
     const cnaeItem = cnaes[cnaeIndex];
+    const inputValue = cnaeItem.value.trim();
     
-    if (!cnaeItem.value) {
+    if (!inputValue) {
         setCnaes(cnaes.map(c => c.id === id ? { ...c, error: null, description: null, loading: false } : c));
         return;
     }
 
+    // Identifica se é um código (formato numérico) ou uma descrição (texto)
+    const isCode = /^[\d\-\/]+$/.test(inputValue);
+
     let updatedCnaes = cnaes.map(c => c.id === id ? { ...c, error: null, description: null, loading: true } : c);
     setCnaes(updatedCnaes);
     
-    const formatError = validateCnae(cnaeItem.value);
-    if (formatError) {
-        setCnaes(prevCnaes => prevCnaes.map(c => c.id === id ? { ...c, error: formatError, loading: false } : c));
-        return;
-    }
-
     try {
-        const description = await fetchCnaeDescription(cnaeItem.value);
-        setCnaes(prevCnaes => prevCnaes.map(c => 
-          c.id === id ? { ...c, description, loading: false, error: null } : c
-        ));
+        if (isCode) {
+            // Validação padrão via IBGE
+            const formatError = validateCnae(inputValue);
+            if (formatError) {
+                setCnaes(prevCnaes => prevCnaes.map(c => c.id === id ? { ...c, error: formatError, loading: false } : c));
+                return;
+            }
+            const description = await fetchCnaeDescription(inputValue);
+            setCnaes(prevCnaes => prevCnaes.map(c => 
+              c.id === id ? { ...c, description, loading: false, error: null } : c
+            ));
+        } else {
+            // Busca Inteligente via IA (Input é texto)
+            const result = await sugerirCnae(inputValue);
+            setCnaes(prevCnaes => prevCnaes.map(c => 
+              c.id === id ? { 
+                  ...c, 
+                  value: result.code, 
+                  description: `(Sugerido por IA) ${result.description}`, 
+                  loading: false, 
+                  error: null 
+              } : c
+            ));
+        }
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
         setCnaes(prevCnaes => prevCnaes.map(c => 
@@ -164,7 +192,7 @@ const App: React.FC = () => {
   };
 
    const handleCnaeChange = (id: number, value: string) => {
-        const formattedValue = formatCnae(value);
+        const formattedValue = formatCnaeInput(value);
         setCnaes(cnaes.map(c => c.id === id ? { ...c, value: formattedValue } : c));
    };
 
@@ -190,13 +218,22 @@ const App: React.FC = () => {
     setResultado(null);
     setLoading(true);
 
-    if (!faturamento || !tipoEmpresa || cnaes.some(c => !c.value || c.error)) {
+    // Validação estrita de Faturamento
+    const faturamentoNum = parseFloat(faturamento);
+    if (!faturamento || isNaN(faturamentoNum) || faturamentoNum <= 0) {
+        setError("O Faturamento Total deve ser maior que R$ 0,00.");
+        setLoading(false);
+        // Rola para o campo de faturamento
+        document.getElementById('faturamento')?.focus();
+        return;
+    }
+
+    if (!tipoEmpresa || cnaes.some(c => !c.value || c.error)) {
         setError("Preencha todos os campos obrigatórios e corrija os erros de CNAE antes de continuar.");
         setLoading(false);
         return;
     }
 
-    const faturamentoNum = parseFloat(faturamento);
     const faturamentoMonofasicoNum = parseFloat(faturamentoMonofasico) || 0;
 
     if (faturamentoMonofasicoNum > faturamentoNum) {
@@ -360,19 +397,20 @@ const App: React.FC = () => {
     if (!resultado) return;
 
     const text = [
-        `*Planejamento Tributário ${anoReferencia}*`,
-        `🏢 *Empresa:* ${nomeEmpresa || 'Não informada'}`,
+        `📊 *Análise Tributária - ${nomeEmpresa || 'Empresa'}*`,
+        `🗓️ *Ano:* ${anoReferencia}`,
         ``,
-        `🏆 *Recomendação:* ${resultado.recomendacao.melhorRegime}`,
-        `💰 *Economia Estimada:* ${resultado.recomendacao.economiaEstimada.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
-        `📝 *Justificativa:* ${resultado.recomendacao.justificativa}`,
+        `✅ *Recomendação:* ${resultado.recomendacao.melhorRegime}`,
+        `💰 *Economia:* ${resultado.recomendacao.economiaEstimada.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
         ``,
-        `*Comparativo de Impostos Anuais:*`,
+        `_Resumo dos Impostos Anuais:_`,
         ...resultado.analise.map(r => 
-            `- ${r.regime}: ${r.impostoEstimado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+            `• ${r.regime}: ${r.impostoEstimado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
         ),
         ``,
-        `_Gerado por SP Assessoria Contábil_`
+        `💡 *Obs:* ${resultado.recomendacao.justificativa}`,
+        ``,
+        `_SP Assessoria Contábil_`
     ].join('\n');
 
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
@@ -475,7 +513,7 @@ const App: React.FC = () => {
                                         onChange={(e) => handleCnaeChange(cnae.id, e.target.value)}
                                         onBlur={() => handleCnaeBlur(cnae.id)}
                                         error={cnae.error} 
-                                        placeholder="0000-0/00"
+                                        placeholder="0000-0/00 ou descreva a atividade..."
                                         tooltip={cnaeTooltipText}
                                     />
                                      {cnae.loading && <i className="fa-solid fa-spinner fa-spin absolute right-3 top-1/2 -translate-y-1/2 text-indigo-500"></i>}
@@ -627,13 +665,24 @@ const App: React.FC = () => {
                 
                 {/* Header Exclusivo para PDF (Oculto em tela) */}
                 <div id="pdf-header" className="hidden mb-4 border-b-2 border-indigo-600 pb-2">
-                   <div className="flex justify-between items-end">
-                       <div>
-                           <h2 className="text-sm font-bold text-gray-800 uppercase tracking-widest">Desenvolvido BY - SP ASSESSORIA CONTÁBIL</h2>
-                           <p className="text-xs text-gray-500">Direitos Reservados • Uso Exclusivo</p>
+                   <div className="flex justify-between items-start">
+                       <div className="flex items-center gap-3">
+                           {/* Logo SVG simplificado para impressão */}
+                           <div className="w-12 h-12 text-indigo-700">
+                                <svg viewBox="0 0 100 100" fill="currentColor">
+                                    <path d="M50 0L93.3 25V75L50 100L6.7 75V25L50 0Z" />
+                                </svg>
+                           </div>
+                           <div>
+                               <h2 className="text-lg font-bold text-gray-800 uppercase tracking-widest leading-none">SP ASSESSORIA CONTÁBIL</h2>
+                               <p className="text-xs text-gray-500 mt-1">CNPJ: 12.345.678/0001-90 | CRC: SP-123456/O</p>
+                               <p className="text-xs text-gray-500">www.spassessoria.com.br</p>
+                           </div>
                        </div>
                        <div className="text-right text-xs text-gray-500">
-                           {new Date().toLocaleDateString('pt-BR')} • {new Date().toLocaleTimeString('pt-BR')}
+                           <p className="font-semibold">Relatório Gerado em:</p>
+                           <p>{new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR')}</p>
+                           <p className="mt-1 text-indigo-600 font-bold">Uso Exclusivo do Cliente</p>
                        </div>
                    </div>
                 </div>
@@ -739,6 +788,13 @@ const App: React.FC = () => {
                         <ComparisonChart data={resultado.analise} isExporting={exportingPDF} theme={theme} />
                     </div>
                 </div>
+
+                {/* Footer Exclusivo para PDF (Oculto em tela) */}
+                <div id="pdf-footer" className="hidden mt-8 pt-4 border-t border-gray-200 text-center text-xs text-gray-500">
+                    <p>© {new Date().getFullYear()} SP Assessoria Contábil - Todos os direitos reservados.</p>
+                    <p>Este documento é uma estimativa baseada em inteligência artificial e não substitui a consultoria oficial.</p>
+                </div>
+
              </div>
             <Disclaimer />
             <div className="mt-8 flex flex-col sm:flex-row justify-center items-center gap-4 no-print">
