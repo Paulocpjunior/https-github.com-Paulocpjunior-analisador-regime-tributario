@@ -18,6 +18,9 @@ import { validateCnpj, validateCnae } from './utils/validators';
 // Declara a variável global html2pdf para que o TypeScript a reconheça
 declare const html2pdf: any;
 
+const SIMPLES_LIMIT = 4800000;
+const SIMPLES_WARNING_THRESHOLD = SIMPLES_LIMIT * 0.8; // 80% do limite (3.84M)
+
 const App: React.FC = () => {
   const [nomeEmpresa, setNomeEmpresa] = useState('');
   const [email, setEmail] = useState('');
@@ -212,6 +215,21 @@ const App: React.FC = () => {
     ));
   };
   
+  // Função para determinar o status do faturamento em relação ao limite do Simples
+  const getFaturamentoStatus = () => {
+    const valor = parseFloat(faturamento);
+    if (isNaN(valor)) return null;
+
+    if (valor > SIMPLES_LIMIT) {
+        return 'exceeded';
+    } else if (valor >= SIMPLES_WARNING_THRESHOLD) {
+        return 'warning';
+    }
+    return null;
+  };
+
+  const faturamentoStatus = getFaturamentoStatus();
+
     const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -543,16 +561,42 @@ const App: React.FC = () => {
                     </h2>
                 </div>
                 <div className="p-6 sm:p-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Input 
-                        label="Faturamento Total" 
-                        iconClass="fa-solid fa-chart-line" 
-                        id="faturamento" 
-                        value={faturamento} 
-                        onChange={(e) => setFaturamento(e.target.value)} 
-                        isCurrency 
-                        required 
-                        tooltip="Informe a receita bruta total da empresa (vendas de produtos + serviços) antes de descontar impostos ou custos. É a base principal de cálculo." 
-                    />
+                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Input 
+                            label="Faturamento Total" 
+                            iconClass="fa-solid fa-chart-line" 
+                            id="faturamento" 
+                            value={faturamento} 
+                            onChange={(e) => setFaturamento(e.target.value)} 
+                            isCurrency 
+                            required 
+                            tooltip="Informe a receita bruta total da empresa (vendas de produtos + serviços) antes de descontar impostos ou custos. É a base principal de cálculo." 
+                        />
+                        {/* Alerta de Faturamento Limite do Simples */}
+                        {faturamentoStatus === 'exceeded' && (
+                            <div className="md:col-span-2 bg-red-50 dark:bg-red-900/30 border-l-4 border-red-500 p-4 rounded-r-md flex items-start gap-3">
+                                <i className="fa-solid fa-triangle-exclamation text-red-600 dark:text-red-400 mt-1"></i>
+                                <div>
+                                    <p className="font-bold text-red-800 dark:text-red-300 text-sm">Faturamento Excede o Limite do Simples Nacional</p>
+                                    <p className="text-red-700 dark:text-red-200 text-xs mt-1">
+                                        O valor informado ultrapassa R$ 4.800.000,00 anuais. O Simples Nacional não será uma opção válida. O sistema analisará Lucro Presumido e Lucro Real como alternativas principais.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                        {faturamentoStatus === 'warning' && (
+                            <div className="md:col-span-2 bg-yellow-50 dark:bg-yellow-900/30 border-l-4 border-yellow-500 p-4 rounded-r-md flex items-start gap-3">
+                                <i className="fa-solid fa-circle-exclamation text-yellow-600 dark:text-yellow-400 mt-1"></i>
+                                <div>
+                                    <p className="font-bold text-yellow-800 dark:text-yellow-300 text-sm">Atenção: Próximo ao Limite do Simples Nacional</p>
+                                    <p className="text-yellow-700 dark:text-yellow-200 text-xs mt-1">
+                                        O faturamento está acima de 80% do limite (R$ 4.8MM). É altamente recomendável analisar com cuidado o Lucro Presumido ou Real, pois o desenquadramento pode ocorrer em breve.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     <Input 
                         label="Faturamento Monofásico (Opcional)" 
                         iconClass="fa-solid fa-tags" 
